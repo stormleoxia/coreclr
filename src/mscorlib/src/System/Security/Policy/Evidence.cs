@@ -3,6 +3,11 @@
 
 // 
 
+using System.Globalization;
+using System.Security.Cryptography.X509Certificates;
+using Mono.Security.Authenticode;
+
+
 namespace System.Security.Policy
 {
     using System;
@@ -20,7 +25,6 @@ namespace System.Security.Policy
     using System.Runtime.Serialization.Formatters.Binary;
 #endif // FEATURE_SERIALIZATION
     using System.Security.Permissions;
-    using System.Security.Util;
     using System.Threading;
     using Microsoft.Win32.SafeHandles;
 
@@ -620,12 +624,13 @@ namespace System.Security.Policy
             // 
 
             [SecurityCritical]
+            [MonoTODO("Uncomment following code")]
             set
             {
 #if FEATURE_CAS_POLICY
-                Contract.Assert((m_target != null && m_target is PEFileEvidenceFactory && value != null && value is AssemblyEvidenceFactory) ||
+                /*Contract.Assert((m_target != null && m_target is PEFileEvidenceFactory && value != null && value is AssemblyEvidenceFactory) ||
                                 (m_target == null && value != null && value is AppDomainEvidenceFactory),
-                                "Evidence retargeting should only be from PEFile -> Assembly or detached -> AppDomain.");
+                                "Evidence retargeting should only be from PEFile -> Assembly or detached -> AppDomain.");*/
 #endif // FEATURE_CAS_POLICY
 
                 using (EvidenceLockHolder lockHolder = new EvidenceLockHolder(this, EvidenceLockHolder.LockType.Writer))
@@ -1896,5 +1901,66 @@ namespace System.Security.Policy
             }
         }
 #endif //!FEATURE_CORECLR && FEATURE_RWLOCK
+
+        // Use an icall to avoid multiple file i/o to detect the 
+		// "possible" presence of an Authenticode signature
+		[MethodImplAttribute (MethodImplOptions.InternalCall)]
+		static extern bool IsAuthenticodePresent (Assembly a);
+
+		// this avoid us to build all evidences from the runtime
+		// (i.e. multiple unmanaged->managed calls) and also allows
+		// to delay their creation until (if) needed
+		[FileIOPermission (SecurityAction.Assert, Unrestricted = true)]
+		static internal Evidence GetDefaultHostEvidence (Assembly a) 
+		{
+			Evidence e = new Evidence ();
+			string aname = a.EscapedCodeBase;
+
+			// by default all assembly have the Zone, Url and Hash evidences
+			e.AddHost (Zone.CreateFromUrl (aname));
+			e.AddHost (new Url (aname));
+			e.AddHost (new Hash (a));
+
+			// non local files (e.g. http://) also get a Site evidence
+			if (String.Compare ("FILE://", 0, aname, 0, 7, true, CultureInfo.InvariantCulture) != 0) {
+				e.AddHost (Site.CreateFromUrl (aname));
+			}
+
+			// strongnamed assemblies gets a StrongName evidence
+			AssemblyName an = a.UnprotectedGetName ();
+			byte[] pk = an.GetPublicKey ();
+			if ((pk != null) && (pk.Length > 0)) {
+				StrongNamePublicKeyBlob blob = new StrongNamePublicKeyBlob (pk);
+				e.AddHost (new StrongName (blob, an.Name, an.Version));
+			}
+
+			// Authenticode(r) signed assemblies get a Publisher evidence
+			if (IsAuthenticodePresent (a)) {
+				// Note: The certificate is part of the evidences even if it is not trusted!
+				// so we can't call X509Certificate.CreateFromSignedFile
+				AuthenticodeDeformatter ad = new AuthenticodeDeformatter (a.Location);
+				if (ad.SigningCertificate != null) {
+					X509Certificate x509 = new X509Certificate (ad.SigningCertificate.RawData);
+					if (x509.GetHashCode () != 0) {
+						e.AddHost (new Publisher (x509));
+					}
+				}
+			}
+			// assemblies loaded from the GAC also get a Gac evidence (new in Fx 2.0)
+			if (a.GlobalAssemblyCache) {
+				e.AddHost (new GacInstalled ());
+			}
+
+			// the current HostSecurityManager may add/remove some evidence
+			AppDomainManager dommgr = AppDomain.CurrentDomain.DomainManager;
+			if (dommgr != null) {
+				if ((dommgr.HostSecurityManager.Flags & HostSecurityManagerOptions.HostAssemblyEvidence) ==
+					HostSecurityManagerOptions.HostAssemblyEvidence) {
+					e = dommgr.HostSecurityManager.ProvideAssemblyEvidence (a, e);
+				}
+			}
+
+			return e;
+		}
     }
 }

@@ -109,9 +109,11 @@ namespace System.Collections.Generic
         [System.Security.SecuritySafeCritical]  // auto-generated
         private static IArraySortHelper<T> CreateArraySortHelper()
         {
-            if (typeof(IComparable<T>).IsAssignableFrom(typeof(T)))
+            var type = typeof (T);
+            if (typeof(IComparable<T>).IsAssignableFrom(type))
             {
-                defaultArraySortHelper = (IArraySortHelper<T>)RuntimeTypeHandle.Allocate(typeof(GenericArraySortHelper<string>).TypeHandle.Instantiate(new Type[] { typeof(T) }));
+                var genericType = typeof(GenericArraySortHelper<>).MakeGenericType();
+                defaultArraySortHelper = (IArraySortHelper<T>)Activator.CreateInstance(genericType);
             }
             else
             {
@@ -887,9 +889,11 @@ namespace System.Collections.Generic
         [System.Security.SecuritySafeCritical]  // auto-generated
         private static IArraySortHelper<TKey, TValue> CreateArraySortHelper()
         {
-            if (typeof(IComparable<TKey>).IsAssignableFrom(typeof(TKey)))
+            var type = typeof(TKey);
+            if (typeof(IComparable<TKey>).IsAssignableFrom(type))
             {
-                defaultArraySortHelper = (IArraySortHelper<TKey, TValue>)RuntimeTypeHandle.Allocate(typeof(GenericArraySortHelper<string, string>).TypeHandle.Instantiate(new Type[] { typeof(TKey), typeof(TValue) }));
+                var genericType = typeof (GenericArraySortHelper<,>).MakeGenericType(type, typeof (TValue));
+                defaultArraySortHelper = (IArraySortHelper<TKey, TValue>) Activator.CreateInstance(genericType);
             }
             else
             {

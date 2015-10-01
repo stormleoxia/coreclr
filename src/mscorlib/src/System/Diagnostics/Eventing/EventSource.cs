@@ -1050,7 +1050,7 @@ namespace System.Diagnostics.Tracing
         {
             if (m_eventSourceEnabled)
             {
-                if (arg1 == null) arg1 = Array.Empty<byte>();
+                if (arg1 == null) arg1 = EmptyArray<byte>.Value;;
                 int blobSize = arg1.Length;
                 fixed (byte* blob = &arg1[0])
                 {
@@ -1070,7 +1070,7 @@ namespace System.Diagnostics.Tracing
         {
             if (m_eventSourceEnabled)
             {
-                if (arg2 == null) arg2 = Array.Empty<byte>();
+                if (arg2 == null) arg2 = EmptyArray<byte>.Value;
                 int blobSize = arg2.Length;
                 fixed (byte* blob = &arg2[0])
                 {
@@ -2978,7 +2978,7 @@ namespace System.Diagnostics.Tracing
                 // for non-BCL EventSource we must assert SecurityPermission
                 new SecurityPermission(PermissionState.Unrestricted).Assert();
 #endif
-                s_currentPid = Win32Native.GetCurrentProcessId();
+                s_currentPid = (uint)Mono.Runtime.GetPid_internal();
             }
         }
 
